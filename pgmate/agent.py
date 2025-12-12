@@ -62,7 +62,7 @@ class PGMateAgent:
         # Initialize Strands agent
         self.agent = Agent(
             model=model,
-            system=system_prompt,
+            system_prompt=system_prompt,
             session_manager=self.session_manager,
         )
 
