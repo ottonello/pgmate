@@ -96,6 +96,7 @@ Guidelines:
 - Recommend proper indexing strategies when discussing performance
 - Use CTEs (WITH clauses) for better readability when appropriate
 - Be mindful of SQL injection and recommend parameterized queries when relevant
+- Check the defined schema before generating queries to avoid referencing non-existent tables or columns
 
 When generating queries:
 - Use clear, descriptive aliases
