@@ -966,7 +966,7 @@ wheels = [
 [[package]]
 name = "pgmate"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "psycopg", extra = ["binary"] },
