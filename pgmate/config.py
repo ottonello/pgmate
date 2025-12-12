@@ -37,9 +37,9 @@ class LLMConfig:
         """Set default model based on provider."""
         if self.model is None:
             if self.provider == "openai":
-                self.model = "gpt-4"
+                self.model = "gpt-4o"
             elif self.provider == "anthropic":
-                self.model = "claude-3-5-sonnet-20241022"
+                self.model = "claude-sonnet-4-20250514"
 
 
 @dataclass
@@ -83,10 +83,10 @@ class Config:
 
         if provider == "openai":
             api_key = _get_required_env("OPENAI_API_KEY")
-            model = os.getenv("OPENAI_MODEL", "gpt-4")
+            model = os.getenv("OPENAI_MODEL", "gpt-4o")
         elif provider == "anthropic":
             api_key = _get_required_env("ANTHROPIC_API_KEY")
-            model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+            model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 

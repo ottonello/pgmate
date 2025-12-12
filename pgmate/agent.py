@@ -1,10 +1,12 @@
 """Strands conversational agent for PostgreSQL query generation."""
 
-import json
 from pathlib import Path
 from typing import Optional
 
-from strands import Agent, AnthropicClient, OpenAIClient
+from strands import Agent
+from strands.models.anthropic import AnthropicModel
+from strands.models.openai import OpenAIModel
+from strands.session.file_session_manager import FileSessionManager
 
 from .config import LLMConfig
 
@@ -31,18 +33,19 @@ class PGMateAgent:
         self.schema_context = schema_context
         self.database_id = database_id
         self.memory_dir = memory_dir
-        self.memory_file = memory_dir / f"{database_id}.json"
 
-        # Initialize LLM client
+        # Initialize LLM model
         if llm_config.provider == "openai":
-            self.client = OpenAIClient(
-                api_key=llm_config.api_key,
-                model=llm_config.model,
+            model = OpenAIModel(
+                client_args={"api_key": llm_config.api_key},
+                model_id=llm_config.model,
+                params={"temperature": 0.7},
             )
         elif llm_config.provider == "anthropic":
-            self.client = AnthropicClient(
-                api_key=llm_config.api_key,
-                model=llm_config.model,
+            model = AnthropicModel(
+                client_args={"api_key": llm_config.api_key},
+                model_id=llm_config.model,
+                params={"temperature": 0.7},
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {llm_config.provider}")
@@ -50,14 +53,17 @@ class PGMateAgent:
         # Build system prompt
         system_prompt = self._build_system_prompt()
 
-        # Load conversation history
-        history = self._load_memory()
+        # Initialize session manager for persistent memory
+        self.session_manager = FileSessionManager(
+            session_id=database_id,
+            storage_dir=str(memory_dir),
+        )
 
         # Initialize Strands agent
         self.agent = Agent(
-            client=self.client,
+            model=model,
             system=system_prompt,
-            history=history,
+            session_manager=self.session_manager,
         )
 
     def _build_system_prompt(self) -> str:
@@ -98,36 +104,6 @@ When generating queries:
 When the user asks about relationships, provide clear explanations of how tables are connected and what the foreign keys mean in business terms.
 """
 
-    def _load_memory(self) -> list:
-        """Load conversation history from disk.
-
-        Returns:
-            List of conversation messages
-        """
-        if self.memory_file.exists():
-            try:
-                with open(self.memory_file, "r") as f:
-                    data = json.load(f)
-                    return data.get("history", [])
-            except (json.JSONDecodeError, OSError):
-                return []
-        return []
-
-    def _save_memory(self):
-        """Save conversation history to disk."""
-        try:
-            with open(self.memory_file, "w") as f:
-                json.dump(
-                    {
-                        "database_id": self.database_id,
-                        "history": self.agent.history,
-                    },
-                    f,
-                    indent=2,
-                )
-        except OSError as e:
-            print(f"Warning: Failed to save conversation memory: {e}")
-
     def chat(self, message: str) -> str:
         """Send a message to the agent and get response.
 
@@ -137,17 +113,22 @@ When the user asks about relationships, provide clear explanations of how tables
         Returns:
             Agent response
         """
-        response = self.agent.run(message)
+        # Call the agent (Strands automatically persists via FileSessionManager)
+        result = self.agent(message)
 
-        # Save updated conversation history
-        self._save_memory()
-
-        return response
+        # Extract the text response from the result
+        # The result object has the response text
+        if hasattr(result, 'content'):
+            return result.content
+        elif hasattr(result, 'text'):
+            return result.text
+        else:
+            return str(result)
 
     def clear_memory(self):
         """Clear conversation history."""
-        self.agent.history = []
-        self._save_memory()
+        # Clear messages in the agent
+        self.agent.messages.clear()
 
     def get_conversation_summary(self) -> str:
         """Get a summary of the conversation.
@@ -155,7 +136,7 @@ When the user asks about relationships, provide clear explanations of how tables
         Returns:
             Summary of conversation length
         """
-        num_messages = len(self.agent.history)
+        num_messages = len(self.agent.messages)
         return f"Conversation contains {num_messages} messages"
 
     def export_history(self, output_file: Optional[Path] = None) -> str:
@@ -167,8 +148,20 @@ When the user asks about relationships, provide clear explanations of how tables
         Returns:
             Path to exported file
         """
+        import json
+
         if output_file is None:
             output_file = Path(f"pgmate_conversation_{self.database_id}.json")
+
+        # Convert messages to serializable format
+        messages_data = []
+        for msg in self.agent.messages:
+            # Strands messages have role and content attributes
+            msg_dict = {
+                "role": getattr(msg, "role", "unknown"),
+                "content": getattr(msg, "content", str(msg)),
+            }
+            messages_data.append(msg_dict)
 
         with open(output_file, "w") as f:
             json.dump(
@@ -176,7 +169,7 @@ When the user asks about relationships, provide clear explanations of how tables
                     "database_id": self.database_id,
                     "provider": self.llm_config.provider,
                     "model": self.llm_config.model,
-                    "history": self.agent.history,
+                    "messages": messages_data,
                 },
                 f,
                 indent=2,
