@@ -60,10 +60,12 @@ class PGMateAgent:
         )
 
         # Initialize Strands agent
+        # Disable default printing handler to avoid duplicate output
         self.agent = Agent(
             model=model,
             system_prompt=system_prompt,
             session_manager=self.session_manager,
+            callback_handler=None,
         )
 
     def _build_system_prompt(self) -> str:
